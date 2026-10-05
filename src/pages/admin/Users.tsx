@@ -648,7 +648,7 @@ export function Users() {
 
                     <div>
                       <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-                        Email Corporativo / Acesso *
+                        Email *
                       </label>
                       <input
                         type="email"

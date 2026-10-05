@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 540 240" fill="none">
+  <!-- WORKFORT MANAGER - DARK SIDEBAR TRANSPARENT LOGO -->
+  <g text-anchor="middle" font-family="'Montserrat', 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif">
+    <!-- Linha 1: WORKFORT -->
+    <text x="270" y="80" font-size="76" font-weight="900" fill="#ffffff" letter-spacing="-1.5">WORKFORT</text>
+    <!-- Linha 2: MANAGER -->
+    <text x="270" y="158" font-size="76" font-weight="900" fill="#ffffff" letter-spacing="-1.5">MANAGER</text>
+    <!-- Linha 3: SISTEMA DE GESTÃO DE OBRAS -->
+    <text x="270" y="208" font-size="20" font-weight="700" fill="#94a3b8" letter-spacing="4.5">SISTEMA DE GESTÃO DE OBRAS</text>
+  </g>
+</svg>

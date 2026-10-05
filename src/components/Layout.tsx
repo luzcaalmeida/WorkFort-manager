@@ -5,6 +5,7 @@ import { auth } from '../lib/firebase';
 import { signOut } from 'firebase/auth';
 import { LogOut, Home, Users, Briefcase, Clock, FileText, Shield } from 'lucide-react';
 import clsx from 'clsx';
+import { Logo } from './Logo';
 
 export function Layout() {
   const { user, profile, loading } = useAuth();
@@ -46,23 +47,8 @@ export function Layout() {
     <div className="min-h-screen bg-slate-50 text-slate-800 antialiased flex flex-col md:flex-row">
       {/* Dark Executive Sidebar */}
       <aside className="w-full md:w-64 bg-slate-950 border-r border-slate-800/80 flex flex-col shrink-0">
-        <div className="p-6 md:p-7 border-b border-slate-800/60">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 flex items-center justify-center text-lg shadow-sm">
-              🏗️
-            </div>
-            <div>
-              <h1 className="text-white text-xl font-black tracking-tight leading-none flex items-center gap-1.5">
-                <span>WorkFort</span>
-                <span className="text-[11px] font-extrabold uppercase px-1.5 py-0.5 bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded tracking-wider">
-                  Manager
-                </span>
-              </h1>
-              <p className="text-slate-400 text-[10px] mt-1 font-bold uppercase tracking-wider">
-                Gestão de Obras & Equipes
-              </p>
-            </div>
-          </div>
+        <div className="p-5 md:p-6 border-b border-slate-800/60 flex flex-col items-center justify-center">
+          <Logo variant="dark" size="sm" showSubtitle={true} />
         </div>
 
         <nav className="flex-1 p-4 space-y-1.5 overflow-y-auto">

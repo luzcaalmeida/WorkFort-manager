@@ -3,6 +3,7 @@ import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../lib/firebase';
 import { useNavigate } from 'react-router-dom';
 import { Briefcase } from 'lucide-react';
+import { Logo } from '../components/Logo';
 
 export function Login() {
   const [email, setEmail] = useState('');
@@ -28,19 +29,8 @@ export function Login() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
       <div className="max-w-md w-full bg-white rounded-3xl shadow-xl p-8 border border-slate-200">
-        <div className="flex flex-col items-center mb-8">
-          <div className="w-16 h-16 bg-slate-900 text-white rounded-2xl flex items-center justify-center mb-4 text-2xl shadow-md shadow-slate-900/20">
-            🏗️
-          </div>
-          <h2 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-            <span>WorkFort</span>
-            <span className="text-xs font-black uppercase px-2 py-0.5 bg-amber-500/20 text-amber-600 border border-amber-500/30 rounded-md tracking-wider">
-              Manager
-            </span>
-          </h2>
-          <p className="text-slate-500 text-xs mt-1 font-bold uppercase tracking-widest">
-            Acesso ao Sistema de Gestão
-          </p>
+        <div className="flex flex-col items-center mb-6">
+          <Logo variant="light" size="lg" />
         </div>
 
         {error && (
@@ -53,7 +43,7 @@ export function Login() {
         <form onSubmit={handleLogin} className="space-y-5">
           <div>
             <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-              Email Corporativo
+              Email
             </label>
             <input
               type="email"
