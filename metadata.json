@@ -1,0 +1,6 @@
+{
+  "name": "WorkFort Manager",
+  "description": "Sistema corporativo de gestão de obras, equipas e controle de horas com níveis de acesso.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

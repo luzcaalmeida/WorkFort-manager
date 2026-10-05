@@ -1,0 +1,61 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Basic helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    function isAdmin() {
+      return isAuthenticated() && getUserData().role == 'admin';
+    }
+    function isManager() {
+      return isAuthenticated() && getUserData().role == 'chefe';
+    }
+    function isWorker() {
+      return isAuthenticated() && getUserData().role == 'funcionario';
+    }
+
+    match /users/{userId} {
+      // Admins and Managers can read all users. Users can read their own profile.
+      allow read: if isAdmin() || isManager() || (isAuthenticated() && request.auth.uid == userId);
+      allow write: if isAdmin() || isManager();
+
+      match /documents/{docId} {
+        allow read: if isAdmin() || isManager() || (isAuthenticated() && request.auth.uid == userId);
+        allow write: if isAdmin();
+      }
+    }
+
+    match /workTypes/{typeId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /projects/{projectId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || isManager();
+    }
+
+    match /timeLogs/{logId} {
+      // Admins and Managers can read all time logs (Managers might need restrictions but let's keep it simple for now)
+      // Workers can only read their own logs.
+      allow read: if isAdmin() || isManager() || (isAuthenticated() && resource.data.workerId == request.auth.uid);
+      
+      // Creating logs: Worker can log for themselves, Manager can log for others. Admin can log for anyone.
+      allow create: if isAdmin() || isManager() || (isAuthenticated() && request.resource.data.workerId == request.auth.uid);
+      
+      // Updates (approvals): Only Admin can approve. Managers can update logs they created? Or just Admin updates status.
+      allow update: if isAdmin() || isManager() || (isAuthenticated() && resource.data.workerId == request.auth.uid && resource.data.status == 'pending');
+      
+      allow delete: if isAdmin();
+    }
+
+    match /materials/{materialId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || isManager();
+    }
+  }
+}
