@@ -1,17 +1,20 @@
-import React from 'react';
+import React, { lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './lib/auth';
 import { Layout } from './components/Layout';
 import { Login } from './pages/Login';
-import { Users } from './pages/admin/Users';
-import { Projects } from './pages/admin/Projects';
-import { WorkTypes } from './pages/admin/WorkTypes';
-import { Approvals } from './pages/admin/Approvals';
-import { Reports } from './pages/admin/Reports';
-import { LogTeam } from './pages/manager/LogTeam';
-import { Validate } from './pages/manager/Validate';
-import { LogPersonal } from './pages/worker/LogPersonal';
 import { Dashboard } from './pages/Dashboard';
+
+// Route-level code splitting: heavy libraries (jsPDF, xlsx) used only by
+// the admin report pages are no longer part of the initial bundle.
+const Users = lazy(() => import('./pages/admin/Users').then(m => ({ default: m.Users })));
+const Projects = lazy(() => import('./pages/admin/Projects').then(m => ({ default: m.Projects })));
+const WorkTypes = lazy(() => import('./pages/admin/WorkTypes').then(m => ({ default: m.WorkTypes })));
+const Approvals = lazy(() => import('./pages/admin/Approvals').then(m => ({ default: m.Approvals })));
+const Reports = lazy(() => import('./pages/admin/Reports').then(m => ({ default: m.Reports })));
+const LogTeam = lazy(() => import('./pages/manager/LogTeam').then(m => ({ default: m.LogTeam })));
+const Validate = lazy(() => import('./pages/manager/Validate').then(m => ({ default: m.Validate })));
+const LogPersonal = lazy(() => import('./pages/worker/LogPersonal').then(m => ({ default: m.LogPersonal })));
 
 export default function App() {
   return (

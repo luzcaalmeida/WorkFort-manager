@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { Suspense } from 'react';
 import { Outlet, Navigate, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { auth } from '../lib/firebase';
@@ -112,7 +112,9 @@ export function Layout() {
 
       <main className="flex-1 p-4 md:p-8 overflow-y-auto">
         <div className="max-w-7xl mx-auto">
-          <Outlet />
+          <Suspense fallback={<div className="p-8 text-center text-sm text-slate-400">A carregar...</div>}>
+            <Outlet />
+          </Suspense>
         </div>
       </main>
     </div>
