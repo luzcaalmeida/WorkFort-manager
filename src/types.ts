@@ -6,6 +6,8 @@ export interface Project {
   location: string;
   status: 'active' | 'completed' | 'on_hold';
   managerId: string; // Chefe de obra responsável
+  requiredWorkers?: number; // Total de funcionários solicitados / requeridos
+  availableWorkTypes?: string[]; // Tipos de trabalhos cadastrados disponíveis na obra
   createdAt: string;
 }
 

@@ -4,12 +4,12 @@ import {
 } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useAuth, UserProfile } from '../../lib/auth';
-import { Project, TimeLog } from '../../types';
+import { Project, TimeLog, WorkType } from '../../types';
 import { 
   Briefcase, Plus, Save, X, Users, Clock, CheckCircle2, AlertCircle, 
   MapPin, Check, ChevronDown, ChevronUp, UserCheck, Search, Filter, 
   ExternalLink, Calendar, ArrowRight, XCircle, RotateCcw, AlertTriangle,
-  UserPlus, UserMinus, Edit, Settings
+  UserPlus, UserMinus, Edit, Settings, Hammer
 } from 'lucide-react';
 import clsx from 'clsx';
 import { CityAutocomplete } from '../../components/CityAutocomplete';
@@ -23,6 +23,7 @@ export function Projects() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [timeLogs, setTimeLogs] = useState<TimeLog[]>([]);
+  const [workTypesList, setWorkTypesList] = useState<WorkType[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Filters
@@ -46,26 +47,31 @@ export function Projects() {
     name: '',
     location: '',
     managerId: '',
-    status: 'active' as 'active' | 'completed' | 'on_hold'
+    status: 'active' as 'active' | 'completed' | 'on_hold',
+    requiredWorkers: 0,
+    availableWorkTypes: [] as string[]
   });
   const [saving, setSaving] = useState(false);
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [projSnap, usersSnap, logsSnap] = await Promise.all([
+      const [projSnap, usersSnap, logsSnap, workTypesSnap] = await Promise.all([
         getDocs(query(collection(db, 'projects'))),
         getDocs(query(collection(db, 'users'))),
-        getDocs(query(collection(db, 'timeLogs')))
+        getDocs(query(collection(db, 'timeLogs'))),
+        getDocs(query(collection(db, 'work_types')))
       ]);
 
       const loadedProjects = projSnap.docs.map(d => ({ id: d.id, ...d.data() } as Project));
       const loadedUsers = usersSnap.docs.map(d => ({ uid: d.id, ...d.data() } as UserProfile));
       const loadedLogs = logsSnap.docs.map(d => ({ id: d.id, ...d.data() } as TimeLog));
+      const loadedWorkTypes = workTypesSnap.docs.map(d => ({ id: d.id, ...d.data() } as WorkType));
 
       setProjects(loadedProjects);
       setUsers(loadedUsers);
       setTimeLogs(loadedLogs);
+      setWorkTypesList(loadedWorkTypes);
 
       // If a project is currently open in modal, keep its reference updated
       if (selectedProject) {
@@ -91,7 +97,9 @@ export function Projects() {
       name: '',
       location: '',
       managerId: profile?.role === 'chefe' ? profile.uid : '',
-      status: 'active'
+      status: 'active',
+      requiredWorkers: 0,
+      availableWorkTypes: []
     });
     setShowCreateForm(true);
   };
@@ -103,7 +111,9 @@ export function Projects() {
       name: proj.name,
       location: proj.location || '',
       managerId: proj.managerId || '',
-      status: proj.status || 'active'
+      status: proj.status || 'active',
+      requiredWorkers: proj.requiredWorkers || 0,
+      availableWorkTypes: proj.availableWorkTypes || []
     });
     setShowCreateForm(true);
   };
@@ -112,35 +122,30 @@ export function Projects() {
     e.preventDefault();
     setSaving(true);
     try {
+      const projectPayload = {
+        name: formData.name.trim(),
+        location: formData.location.trim(),
+        managerId: formData.managerId,
+        status: formData.status,
+        requiredWorkers: Math.max(0, Number(formData.requiredWorkers) || 0),
+        availableWorkTypes: formData.availableWorkTypes || []
+      };
+
       if (editingProject) {
-        await updateDoc(doc(db, 'projects', editingProject.id), {
-          name: formData.name.trim(),
-          location: formData.location.trim(),
-          managerId: formData.managerId,
-          status: formData.status
-        });
+        await updateDoc(doc(db, 'projects', editingProject.id), projectPayload);
         setProjects(prev => prev.map(p => p.id === editingProject.id ? { 
           ...p, 
-          name: formData.name.trim(),
-          location: formData.location.trim(),
-          managerId: formData.managerId,
-          status: formData.status
+          ...projectPayload
         } : p));
         if (selectedProject && selectedProject.id === editingProject.id) {
           setSelectedProject(prev => prev ? {
             ...prev,
-            name: formData.name.trim(),
-            location: formData.location.trim(),
-            managerId: formData.managerId,
-            status: formData.status
+            ...projectPayload
           } : null);
         }
       } else {
         await addDoc(collection(db, 'projects'), {
-          name: formData.name.trim(),
-          location: formData.location.trim(),
-          managerId: formData.managerId,
-          status: 'active',
+          ...projectPayload,
           createdAt: new Date().toISOString()
         });
         fetchData();
@@ -247,6 +252,27 @@ export function Projects() {
     const workersWithLogs = users.filter(u => workerIdsWithLogs.has(u.uid) && !directlyAssigned.some(da => da.uid === u.uid));
 
     return [...directlyAssigned, ...workersWithLogs];
+  };
+
+  // Helper: Obter controle de funcionários e capacidade da obra
+  const getProjectStaffing = (project: Project) => {
+    const directlyAssigned = users.filter(u => u.assignedProjectId === project.id);
+    const required = project.requiredWorkers || 0;
+    const assigned = directlyAssigned.length;
+    const remaining = Math.max(0, required - assigned);
+    const isFull = required > 0 && assigned >= required;
+    const isOver = required > 0 && assigned > required;
+    const percentage = required > 0 ? Math.min(100, Math.round((assigned / required) * 100)) : 0;
+
+    return {
+      required,
+      assigned,
+      remaining,
+      isFull,
+      isOver,
+      percentage,
+      directlyAssigned
+    };
   };
 
   // Helper: Obter estatísticas globais de uma obra
@@ -470,6 +496,116 @@ export function Projects() {
                 </div>
               </div>
 
+              {/* CONTROLE DE FUNCIONÁRIOS REQUERIDOS */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5 flex items-center justify-between">
+                  <span>Número de Funcionários Requeridos</span>
+                  <span className="text-[10px] text-slate-500 font-semibold lowercase">Controle de Vagas</span>
+                </label>
+                <div className="relative">
+                  <input 
+                    type="number" 
+                    min="0"
+                    placeholder="Ex: 5 (quantidade necessária)"
+                    value={formData.requiredWorkers === 0 ? '' : formData.requiredWorkers} 
+                    onChange={e => setFormData({...formData, requiredWorkers: Math.max(0, parseInt(e.target.value) || 0)})} 
+                    className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-slate-900 outline-none text-sm font-bold text-slate-900 pr-10" 
+                  />
+                  <Users className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                </div>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Cada funcionário adicionado à obra diminuirá deste total solicitado para controlar as vagas restantes.
+                </p>
+              </div>
+
+              {/* TIPOS DE TRABALHO DISPONÍVEIS NA OBRA */}
+              <div>
+                <div className="flex justify-between items-center mb-1.5">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
+                    Tipos de Trabalho Disponíveis nesta Obra
+                  </label>
+                  {workTypesList.length > 0 && (
+                    <span className="text-[11px] text-slate-600 font-bold">
+                      {formData.availableWorkTypes.length} selecionado(s)
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-500 mb-2.5">
+                  Selecione as especialidades e trabalhos cadastrados que estão disponíveis para execução nesta obra:
+                </p>
+
+                {workTypesList.length === 0 ? (
+                  <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-600 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                    <span>Nenhum tipo de trabalho cadastrado no sistema ainda.</span>
+                    <a 
+                      href="/admin/work-types" 
+                      target="_blank" 
+                      rel="noreferrer"
+                      className="font-bold text-slate-900 underline hover:text-slate-700 shrink-0"
+                    >
+                      Cadastrar em Tipos de Trabalho →
+                    </a>
+                  </div>
+                ) : (
+                  <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-2.5">
+                    <div className="flex flex-wrap gap-2 max-h-44 overflow-y-auto pr-1">
+                      {workTypesList.map(wt => {
+                        const isSelected = formData.availableWorkTypes.includes(wt.name);
+                        return (
+                          <button
+                            key={wt.id}
+                            type="button"
+                            onClick={() => {
+                              if (isSelected) {
+                                setFormData({
+                                  ...formData,
+                                  availableWorkTypes: formData.availableWorkTypes.filter(name => name !== wt.name)
+                                });
+                              } else {
+                                setFormData({
+                                  ...formData,
+                                  availableWorkTypes: [...formData.availableWorkTypes, wt.name]
+                                });
+                              }
+                            }}
+                            className={clsx(
+                              "px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer select-none",
+                              isSelected
+                                ? "bg-slate-900 text-white shadow-sm ring-2 ring-slate-900"
+                                : "bg-white text-slate-700 border border-slate-300 hover:border-slate-800 hover:bg-slate-100"
+                            )}
+                          >
+                            <Check className={clsx("w-3.5 h-3.5 shrink-0", isSelected ? "opacity-100" : "opacity-0")} />
+                            <span>{wt.name}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="pt-2 flex justify-between items-center border-t border-slate-200 text-[11px]">
+                      <span className="text-slate-400">
+                        Clique para marcar os trabalhos da obra
+                      </span>
+                      <div className="flex gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setFormData({ ...formData, availableWorkTypes: workTypesList.map(w => w.name) })}
+                          className="text-slate-900 font-bold hover:underline"
+                        >
+                          Selecionar Todos
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setFormData({ ...formData, availableWorkTypes: [] })}
+                          className="text-slate-500 font-medium hover:underline"
+                        >
+                          Limpar
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <div className="pt-4 flex justify-end gap-3 border-t border-slate-100">
                 <button 
                   type="button" 
@@ -569,10 +705,85 @@ export function Projects() {
                   <h3 className="text-xl font-black text-slate-900 tracking-tight group-hover:text-slate-700 transition-colors">
                     {p.name}
                   </h3>
-                  <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium mt-1 mb-4">
+                  <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium mt-1 mb-3.5">
                     <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                     <span className="truncate">{p.location || 'Localização não definida'}</span>
                   </div>
+
+                  {/* CONTROLE DE FUNCIONÁRIOS REQUERIDOS / VAGAS RESTANTES */}
+                  {(() => {
+                    const staffing = getProjectStaffing(p);
+                    return (
+                      <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200/80 mb-3.5">
+                        <div className="flex justify-between items-center text-[10px] font-bold mb-1">
+                          <span className="text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                            <Users className="w-3.5 h-3.5 text-slate-800" />
+                            Quadro de Funcionários
+                          </span>
+                          {staffing.required > 0 ? (
+                            <span className={clsx(
+                              "px-2 py-0.5 rounded-md font-black uppercase text-[10px]",
+                              staffing.remaining > 0 ? "bg-amber-100 text-amber-900 border border-amber-300" :
+                              staffing.isOver ? "bg-rose-100 text-rose-900 border border-rose-300" :
+                              "bg-emerald-100 text-emerald-900 border border-emerald-300"
+                            )}>
+                              {staffing.remaining > 0 ? `Faltam ${staffing.remaining} vagas` :
+                               staffing.isOver ? `+${staffing.assigned - staffing.required} excedente` :
+                               'Equipe Completa'}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 font-medium text-[10px]">Sem meta</span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center justify-between text-xs font-bold text-slate-800">
+                          <span>Instalados: <strong className="text-slate-900">{staffing.assigned}</strong></span>
+                          {staffing.required > 0 ? (
+                            <span className="text-slate-500 text-[11px] font-semibold">
+                              Solicitados: <strong>{staffing.required}</strong> ({staffing.remaining} restantes)
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 text-[11px] font-normal">vinculados à obra</span>
+                          )}
+                        </div>
+
+                        {staffing.required > 0 && (
+                          <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden mt-1.5">
+                            <div 
+                              className={clsx(
+                                "h-full rounded-full transition-all duration-300",
+                                staffing.remaining === 0 ? "bg-emerald-600" :
+                                staffing.isOver ? "bg-rose-600" : "bg-slate-900"
+                              )}
+                              style={{ width: `${Math.min(100, Math.round((staffing.assigned / staffing.required) * 100))}%` }}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+
+                  {/* TRABALHOS DISPONÍVEIS NA OBRA */}
+                  {p.availableWorkTypes && p.availableWorkTypes.length > 0 && (
+                    <div className="mb-3.5">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1.5 flex items-center gap-1">
+                        <Briefcase className="w-3 h-3 text-slate-600" />
+                        Trabalhos Disponíveis ({p.availableWorkTypes.length})
+                      </span>
+                      <div className="flex flex-wrap gap-1">
+                        {p.availableWorkTypes.slice(0, 3).map((wtName, idx) => (
+                          <span key={idx} className="px-2 py-0.5 bg-slate-100 text-slate-800 rounded-lg text-[10px] font-bold border border-slate-200">
+                            🔨 {wtName}
+                          </span>
+                        ))}
+                        {p.availableWorkTypes.length > 3 && (
+                          <span className="px-1.5 py-0.5 bg-slate-200 text-slate-600 rounded-lg text-[10px] font-bold">
+                            +{p.availableWorkTypes.length - 3} mais
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Quick stats pills */}
                   <div className="grid grid-cols-3 gap-2 bg-slate-50 p-3 rounded-2xl border border-slate-100 mb-4 text-center">
@@ -725,23 +936,67 @@ export function Projects() {
               </div>
             </div>
 
+            {/* TRABALHOS DISPONÍVEIS NA OBRA (BANNER DO MODAL) */}
+            <div className="px-6 py-3.5 bg-slate-100 border-b border-slate-200 flex flex-wrap items-center gap-2">
+              <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5 uppercase tracking-wider text-[11px]">
+                <Briefcase className="w-3.5 h-3.5 text-slate-800" />
+                Trabalhos Disponíveis nesta Obra:
+              </span>
+              {selectedProject.availableWorkTypes && selectedProject.availableWorkTypes.length > 0 ? (
+                selectedProject.availableWorkTypes.map((wt, idx) => (
+                  <span key={idx} className="px-2.5 py-1 bg-white text-slate-900 border border-slate-300 rounded-xl text-xs font-bold shadow-xs flex items-center gap-1">
+                    <span>🔨</span>
+                    <span>{wt}</span>
+                  </span>
+                ))
+              ) : (
+                <span className="text-xs text-slate-400 italic">
+                  Nenhum tipo de trabalho selecionado ainda. (Clique em "Editar Obra" para selecionar)
+                </span>
+              )}
+            </div>
+
             {/* KPI Summary Cards */}
             {(() => {
               const projectStats = getProjectStats(selectedProject.id);
               const linkedWorkers = getLinkedWorkers(selectedProject.id);
+              const staffing = getProjectStaffing(selectedProject);
 
               return (
                 <div className="p-6 bg-slate-50/60 border-b border-slate-100">
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                     <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
                       <div className="flex items-center justify-between text-slate-400 mb-1">
-                        <span className="text-[11px] font-bold uppercase tracking-wider">Colaboradores</span>
+                        <span className="text-[11px] font-bold uppercase tracking-wider">Controle de Equipe</span>
                         <Users className="w-4 h-4 text-slate-700" />
                       </div>
-                      <div className="text-2xl font-black text-slate-800">
-                        {linkedWorkers.length}
+                      <div className="flex items-baseline gap-1.5">
+                        <span className="text-2xl font-black text-slate-900">{staffing.assigned}</span>
+                        {staffing.required > 0 ? (
+                          <span className="text-xs font-bold text-slate-400">/ {staffing.required} solicitados</span>
+                        ) : (
+                          <span className="text-xs text-slate-400">(sem meta)</span>
+                        )}
                       </div>
-                      <span className="text-[11px] text-slate-400">vinculados a esta obra</span>
+                      <div className="mt-1">
+                        {staffing.required > 0 ? (
+                          staffing.remaining > 0 ? (
+                            <span className="text-[10px] font-black uppercase text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
+                              Restam {staffing.remaining} vagas
+                            </span>
+                          ) : staffing.isOver ? (
+                            <span className="text-[10px] font-black uppercase text-rose-800 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200">
+                              +{staffing.assigned - staffing.required} excedente
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-black uppercase text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                              ✓ Equipe completa
+                            </span>
+                          )
+                        ) : (
+                          <span className="text-[11px] text-slate-400 font-medium">vinculados à obra</span>
+                        )}
+                      </div>
                     </div>
 
                     <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
@@ -808,49 +1063,69 @@ export function Projects() {
             {/* Modal Body: List of Linked Workers & Direct Assignment Bar */}
             <div className="p-6 overflow-y-auto flex-1 bg-white">
               {/* SECTION: VINCULAR FUNCIONÁRIO A ESTA OBRA */}
-              {(isAdmin || isManager) && (
-                <div className="mb-6 p-4 bg-slate-50 border border-slate-200 rounded-2xl">
-                  <div className="flex items-center gap-2 mb-2 text-slate-900">
-                    <UserPlus className="w-4 h-4 text-slate-800" />
-                    <span className="text-xs font-black uppercase tracking-wider">
-                      Vincular Funcionário à Obra "{selectedProject.name}"
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-600 mb-3">
-                    Selecione um colaborador abaixo para adicioná-lo à equipe correspondente desta obra.
-                  </p>
+              {(isAdmin || isManager) && (() => {
+                const staffing = getProjectStaffing(selectedProject);
+                return (
+                  <div className="mb-6 p-4 bg-slate-50 border border-slate-200 rounded-2xl">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-2">
+                      <div className="flex items-center gap-2 text-slate-900">
+                        <UserPlus className="w-4 h-4 text-slate-800" />
+                        <span className="text-xs font-black uppercase tracking-wider">
+                          Vincular Funcionário à Obra "{selectedProject.name}"
+                        </span>
+                      </div>
+                      {staffing.required > 0 && (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs font-bold text-slate-500">
+                            Vagas Restantes:
+                          </span>
+                          <span className={clsx(
+                            "px-2.5 py-0.5 rounded-lg text-xs font-black",
+                            staffing.remaining > 0 ? "bg-amber-100 text-amber-900 border border-amber-300" :
+                            staffing.isOver ? "bg-rose-100 text-rose-900 border border-rose-300" :
+                            "bg-emerald-100 text-emerald-900 border border-emerald-300"
+                          )}>
+                            {staffing.remaining} de {staffing.required} solicitados
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-600 mb-3">
+                      Selecione um colaborador abaixo para adicioná-lo à equipe. Cada colaborador vinculado diminuirá as vagas restantes do total solicitado.
+                    </p>
 
-                  <div className="flex flex-col sm:flex-row items-center gap-2.5">
-                    <select
-                      value={selectedWorkerToAssign}
-                      onChange={(e) => setSelectedWorkerToAssign(e.target.value)}
-                      className="w-full sm:flex-1 px-3.5 py-2.5 border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 bg-white focus:ring-2 focus:ring-slate-900 outline-none"
-                    >
-                      <option value="">Selecione um funcionário para vincular...</option>
-                      {users
-                        .filter(u => u.assignedProjectId !== selectedProject.id)
-                        .map(u => {
-                          const currentAssigned = projects.find(p => p.id === u.assignedProjectId);
-                          return (
-                            <option key={u.uid} value={u.uid}>
-                              {u.name} ({u.role}) — {currentAssigned ? `Atualmente na obra "${currentAssigned.name}"` : 'Sem obra atribuída'}
-                            </option>
-                          );
-                        })}
-                    </select>
+                    <div className="flex flex-col sm:flex-row items-center gap-2.5">
+                      <select
+                        value={selectedWorkerToAssign}
+                        onChange={(e) => setSelectedWorkerToAssign(e.target.value)}
+                        className="w-full sm:flex-1 px-3.5 py-2.5 border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 bg-white focus:ring-2 focus:ring-slate-900 outline-none"
+                      >
+                        <option value="">Selecione um funcionário para vincular...</option>
+                        {users
+                          .filter(u => u.assignedProjectId !== selectedProject.id)
+                          .map(u => {
+                            const currentAssigned = projects.find(p => p.id === u.assignedProjectId);
+                            return (
+                              <option key={u.uid} value={u.uid}>
+                                {u.name} ({u.role}) — {currentAssigned ? `Atualmente na obra "${currentAssigned.name}"` : 'Sem obra atribuída'}
+                              </option>
+                            );
+                          })}
+                      </select>
 
-                    <button
-                      type="button"
-                      disabled={!selectedWorkerToAssign || assigningWorker}
-                      onClick={() => handleAssignWorker(selectedWorkerToAssign, selectedProject.id)}
-                      className="w-full sm:w-auto px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm transition-all disabled:opacity-50 shrink-0"
-                    >
-                      <UserPlus className="w-3.5 h-3.5" />
-                      <span>{assigningWorker ? 'Vinculando...' : 'Adicionar à Obra'}</span>
-                    </button>
+                      <button
+                        type="button"
+                        disabled={!selectedWorkerToAssign || assigningWorker}
+                        onClick={() => handleAssignWorker(selectedWorkerToAssign, selectedProject.id)}
+                        className="w-full sm:w-auto px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm transition-all disabled:opacity-50 shrink-0"
+                      >
+                        <UserPlus className="w-3.5 h-3.5" />
+                        <span>{assigningWorker ? 'Vinculando...' : 'Adicionar à Obra'}</span>
+                      </button>
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               <div className="mb-4 flex justify-between items-center">
                 <div>

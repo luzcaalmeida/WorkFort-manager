@@ -34,6 +34,11 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    match /work_types/{typeId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
     match /projects/{projectId} {
       allow read: if isAuthenticated();
       allow write: if isAdmin() || isManager();
